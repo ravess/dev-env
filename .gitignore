@@ -1,0 +1,5 @@
+volumes/gitlab-data/*
+volumes/gitlab-runner-config-data/certs/*
+volumes/nexus-data/*
+volumes/nginx-data/certs/*
+ansible/ansible.cfg

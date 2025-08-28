@@ -1,0 +1,79 @@
+services:
+  nginx:
+    image: nginx:latest
+    container_name: nginx-proxy
+    restart: always
+    ports:
+      - '80:80' # Nginx will listen on host port 80 and proxy to GitLab
+      - '443:443' # Uncomment this if you enable HTTPS in nginx.conf
+    volumes:
+      - './volumes/nginx-data/nginx.conf:/etc/nginx/nginx.conf:ro' # Mount your custom nginx.conf
+      # Uncomment the line below AND create ./nginx-proxy/certs folder with your .crt and .key files if using HTTPS
+      - './volumes/nginx-data/certs:/etc/nginx/certs:ro'
+    networks:
+      - gitlab-network # Essential for Nginx to talk to GitLab by name
+  gitlab:
+    image: gitlab/gitlab-ee:latest
+    container_name: gitlab
+    restart: always
+    hostname: 'gitlab.local'
+    environment:
+      GITLAB_OMNIBUS_CONFIG: |
+        # external_url 'http://gitlab.local/'
+        # IMPORTANT: GitLab's external_url should reflect how it's publicly accessed
+        # If Nginx is serving gitlab.local, this should still be gitlab.local.
+        # If Nginx were serving a different public domain, you'd put that here.
+
+        # Disable internal Nginx
+        nginx['enable'] = false        
+        external_url 'https://gitlab.local/'
+        # nginx['listen_port'] = 80 # Ensure GitLab's internal Nginx listens on port 80
+
+        # When using HTTPS with Nginx fronting GitLab, consider these GitLab settings:
+        # nginx['listen_https'] = false # GitLab's internal Nginx remains HTTP
+        # nginx['proxy_set_headers'] = {
+        #  "X-Forwarded-Proto" => "https",
+        #  "X-Forwarded-Ssl" => "on",
+        #  "X-Real-IP" => "$http_x_real_ip",
+        #  "X-Forwarded-For" => "$http_x_forwarded_for"
+        # }
+        # nginx['redirect_http_to_https'] = false # GitLab's internal Nginx remains HTTP
+    ports:
+      #- '80:80'
+      #- '443:443'
+      - '22:22'
+    volumes:
+      - './volumes/gitlab-data/config:/etc/gitlab'
+      - './volumes/gitlab-data/logs:/var/log/gitlab'
+      - './volumes/gitlab-data/data:/var/opt/gitlab'
+    shm_size: '256m'
+    networks:
+      - gitlab-network
+
+  gitlab-runner:
+    image: gitlab/gitlab-runner:latest
+    container_name: gitlab-runner
+    restart: always
+    volumes:
+      - './volumes/gitlab-runner-config-data:/etc/gitlab-runner'
+      - '/var/run/docker.sock:/var/run/docker.sock'
+      #- './nginx-gitlab/certs:/etc/gitlab-runner/certs:ro' # This is the mount from host to runner container
+    networks:
+      - gitlab-network
+
+  nexus:
+    image: sonatype/nexus3:latest
+    container_name: nexus-repository
+    restart: always
+    volumes:
+      - './volumes/nexus-data:/nexus-data' # Persistent storage for Nexus
+    ports:
+      - '5000:5000' # Docker Hosted Repository (configure this in Nexus UI)
+    networks:
+      - gitlab-network
+    # environment:
+    #   - NEXUS_CONTEXT='' # Set context path if needed, default is root
+
+networks:
+  gitlab-network:
+    driver: bridge
